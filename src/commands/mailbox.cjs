@@ -141,6 +141,9 @@ async function runWhoami(args, deps) {
     deps.consoleRef.log("Address: unknown (env override — key only)");
   } else {
     deps.consoleRef.log(identity.address || "Address: unknown");
+    if (identity.mailboxType === "temporary") {
+      deps.consoleRef.log(`Type: temporary (expires ${identity.expiresAt || "unknown"})`);
+    }
   }
 }
 

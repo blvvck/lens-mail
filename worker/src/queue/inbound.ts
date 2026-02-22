@@ -8,6 +8,14 @@ import {
   checkDmarcFromHeaders,
 } from '../lib/spam';
 import { runSecurityHooks, type SecurityFlag } from '../lib/security-hooks';
+import {
+  MAX_TEMP_MESSAGES,
+  MAX_TEMP_STORAGE_BYTES,
+  TEMPORARY_MAILBOX_TYPE,
+  calculateStoredBytes,
+  isExpired,
+  purgeR2Prefix,
+} from '../lib/temporary';
 
 /** OTP / verification code patterns */
 const CODE_PATTERNS = [
@@ -39,6 +47,14 @@ export async function processInboundQueue(
 }
 
 async function processMessage(msg: InboundMessage, env: Env): Promise<void> {
+  const mailboxState = await env.DB.prepare(
+    `SELECT status, mailbox_type, expires_at FROM mailboxes WHERE id = ?`
+  ).bind(msg.mailboxId).first<{ status: string; mailbox_type: string; expires_at: string | null }>();
+  if (!mailboxState || mailboxState.status !== 'active' || isExpired(mailboxState.expires_at)) {
+    await purgeR2Prefix(env.MAIL_BUCKET, msg.r2Key);
+    return;
+  }
+
   // Fetch raw email from R2
   const rawObj = await env.MAIL_BUCKET.get(`${msg.r2Key}raw.eml`);
   if (!rawObj) throw new Error(`Raw email not found at ${msg.r2Key}raw.eml`);
@@ -51,6 +67,32 @@ async function processMessage(msg: InboundMessage, env: Env): Promise<void> {
 
   const bodyText = parsed.text || '';
   const bodyHtml = parsed.html || '';
+
+  const stateAfterParse = await env.DB.prepare(
+    `SELECT status, mailbox_type, expires_at FROM mailboxes WHERE id = ?`
+  ).bind(msg.mailboxId).first<{ status: string; mailbox_type: string; expires_at: string | null }>();
+  if (!stateAfterParse || stateAfterParse.status !== 'active' || isExpired(stateAfterParse.expires_at)) {
+    await purgeR2Prefix(env.MAIL_BUCKET, msg.r2Key);
+    return;
+  }
+
+  if (stateAfterParse.mailbox_type === TEMPORARY_MAILBOX_TYPE) {
+    const usage = await env.DB.prepare(
+      `SELECT COUNT(*) as count, COALESCE(SUM(storage_bytes), 0) as bytes
+       FROM messages WHERE mailbox_id = ? AND status IN ('active', 'quarantine')`
+    ).bind(msg.mailboxId).first<{ count: number; bytes: number }>();
+    if ((usage?.count || 0) >= MAX_TEMP_MESSAGES) {
+      await purgeR2Prefix(env.MAIL_BUCKET, msg.r2Key);
+      return;
+    }
+  }
+
+  const storageBytes = calculateStoredBytes(
+    rawBuffer,
+    bodyText,
+    bodyHtml,
+    (parsed.attachments || []).map((attachment) => attachment.content),
+  );
 
   // Store parsed body in R2
   await env.MAIL_BUCKET.put(`${msg.r2Key}body.txt`, bodyText);
@@ -162,6 +204,14 @@ async function processMessage(msg: InboundMessage, env: Env): Promise<void> {
 
   const flagsJson = securityFlags.length > 0 ? JSON.stringify(securityFlags) : null;
 
+  const stateBeforeIndex = await env.DB.prepare(
+    `SELECT status, expires_at FROM mailboxes WHERE id = ?`
+  ).bind(msg.mailboxId).first<{ status: string; expires_at: string | null }>();
+  if (!stateBeforeIndex || stateBeforeIndex.status !== 'active' || isExpired(stateBeforeIndex.expires_at)) {
+    await purgeR2Prefix(env.MAIL_BUCKET, msg.r2Key);
+    return;
+  }
+
   // Quarantine: if any critical/high severity flags, hold for human review
   const hasSevereFlags = securityFlags.some(
     (f) => f.severity === 'critical' || f.severity === 'high'
@@ -171,15 +221,26 @@ async function processMessage(msg: InboundMessage, env: Env): Promise<void> {
   const messageStatus = (hasSevereFlags && !ownerVerified) ? 'quarantine' : 'active';
 
   // Index in D1 — store auth results, security flags alongside spam score
-  await env.DB.prepare(
+  const indexed = await env.DB.prepare(
     `INSERT INTO messages (
       id, mailbox_id, message_id, in_reply_to,
       from_address, from_name, to_address, subject,
       snippet, received_at, r2_key, has_code, has_link,
       has_attachment, attachment_count, spam_score,
       spf_result, dkim_result, dmarc_result,
-      security_flags, size_bytes, status, direction
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'inbound')`
+      security_flags, size_bytes, storage_bytes, status, direction
+    ) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+      'inbound'
+      FROM mailboxes mb
+      WHERE mb.id = ?
+      AND mb.status = 'active'
+      AND (mb.expires_at IS NULL OR julianday(mb.expires_at) > julianday('now'))
+      AND (
+        mb.mailbox_type != ? OR (
+          (SELECT COUNT(*) FROM messages WHERE mailbox_id = mb.id AND status IN ('active', 'quarantine')) < ?
+          AND (SELECT COALESCE(SUM(storage_bytes), 0) FROM messages WHERE mailbox_id = mb.id AND status IN ('active', 'quarantine')) + ? <= ?
+        )
+      )`
   ).bind(
     msg.messageId,
     msg.mailboxId,
@@ -202,8 +263,19 @@ async function processMessage(msg: InboundMessage, env: Env): Promise<void> {
     dmarcResult,
     flagsJson,
     rawBuffer.byteLength,
+    storageBytes,
     messageStatus,
+    msg.mailboxId,
+    TEMPORARY_MAILBOX_TYPE,
+    MAX_TEMP_MESSAGES,
+    storageBytes,
+    MAX_TEMP_STORAGE_BYTES,
   ).run();
+
+  if (indexed.meta.changes === 0) {
+    await purgeR2Prefix(env.MAIL_BUCKET, msg.r2Key);
+    return;
+  }
 
   // Apply filters — auto-tag based on mailbox filter rules
   await applyFilters(env, msg.mailboxId, {

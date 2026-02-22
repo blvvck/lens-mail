@@ -9,7 +9,7 @@ const { isMailDaemonCommand, runMailDaemonCommand } = require("./commands/daemon
 const DAEMON_SUBCOMMANDS = ["start", "stop", "status", "logs"];
 
 const MAIL_COMMANDS = new Set([
-  "mail.setup", "mail.whoami", "mail.check", "mail.read", "mail.send",
+  "mail.setup", "mail.temp", "mail.whoami", "mail.check", "mail.read", "mail.send",
   "mail.code", "mail.link", "mail.links", "mail.wait", "mail.delete", "mail.search",
   "mail.save",
   "mail.tag", "mail.untag", "mail.tags",
@@ -34,7 +34,8 @@ const MAIL_HELP = `
 \x1b[1mlens-mail\x1b[0m — your agent's mailbox
 
 \x1b[36mIDENTITY\x1b[0m
-  setup [--name <n> --display <d>]    Provision a mailbox
+  setup [--name <n>] [--display <n>]  Provision a mailbox
+  temp [--name <label>] [--ttl 1h]   Create a short-lived receive-only mailbox
   whoami                              Show the current identity
 
 \x1b[36mMESSAGES\x1b[0m

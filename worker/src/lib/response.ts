@@ -12,6 +12,7 @@ export function err(error: string, code: number, status: number): Response {
 
 export const notFound = (msg = 'Not found') => err(msg, 1, 404);
 export const unauthorized = () => err('Unauthorized', 2, 401);
+export const forbidden = (msg = 'Forbidden') => err(msg, 6, 403);
 export const networkError = (msg: string) => err(msg, 3, 502);
 export const rateLimited = (retryAfter: number) => {
   const res = err('Rate limited', 4, 429);

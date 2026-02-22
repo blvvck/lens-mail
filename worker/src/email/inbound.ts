@@ -2,6 +2,12 @@ import type { Env, InboundMessage } from '../types';
 import { ulid } from '../lib/ulid';
 import { isKnownSpamDomain, checkSpfFromHeaders } from '../lib/spam';
 import { isBlocked } from '../api/blocklist';
+import {
+  MAX_TEMP_MESSAGES,
+  MAX_TEMP_STORAGE_BYTES,
+  TEMPORARY_MAILBOX_TYPE,
+  isExpired,
+} from '../lib/temporary';
 
 /** Max emails per sender per mailbox per hour before rate limiting kicks in */
 const MAX_SENDER_PER_HOUR = 50;
@@ -54,12 +60,25 @@ export async function handleInboundEmail(
   // --- Mailbox resolution ---
 
   const mailbox = await env.DB.prepare(
-    "SELECT id FROM mailboxes WHERE address = ? AND status = 'active'"
-  ).bind(to).first<{ id: string }>();
+    `SELECT id, mailbox_type, expires_at FROM mailboxes
+     WHERE address = ? AND status = 'active'
+     AND (expires_at IS NULL OR julianday(expires_at) > julianday('now'))`
+  ).bind(to).first<{ id: string; mailbox_type: string; expires_at: string | null }>();
 
-  if (!mailbox) {
+  if (!mailbox || isExpired(mailbox.expires_at)) {
     message.setReject('Unknown recipient');
     return;
+  }
+
+  if (mailbox.mailbox_type === TEMPORARY_MAILBOX_TYPE) {
+    const usage = await env.DB.prepare(
+      `SELECT COUNT(*) as count, COALESCE(SUM(storage_bytes), 0) as bytes
+       FROM messages WHERE mailbox_id = ? AND status IN ('active', 'quarantine')`
+    ).bind(mailbox.id).first<{ count: number; bytes: number }>();
+    if ((usage?.count || 0) >= MAX_TEMP_MESSAGES || (usage?.bytes || 0) + rawSize > MAX_TEMP_STORAGE_BYTES) {
+      message.setReject('Temporary mailbox capacity exceeded');
+      return;
+    }
   }
 
   // 4. Per-sender rate limiting: max N emails per sender per hour

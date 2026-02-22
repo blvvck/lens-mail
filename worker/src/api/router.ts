@@ -1,7 +1,7 @@
 import type { Env, AuthContext } from '../types';
 import { authenticate, authError } from '../lib/auth';
-import { ok, notFound, validationError } from '../lib/response';
-import { handleProvision, handleRotateKey, handleRevokeKey, handleOwnerToken, handleGetVerifyCode, handleDeleteOwnerToken } from './provision';
+import { ok, notFound, validationError, forbidden } from '../lib/response';
+import { handleProvision, handleTemporaryProvision, handleRotateKey, handleRevokeKey, handleOwnerToken, handleGetVerifyCode, handleDeleteOwnerToken } from './provision';
 import { handleGetMessages, handleGetMessage, handleDeleteMessage, handleSearchMessages, handleWaitMessage, handleDownloadAttachment, handleGetThread, handleGetQuarantine, handleReleaseQuarantine } from './messages';
 import { handleSend, handleReply, handleForward } from './send';
 import { handleGetStats } from './stats';
@@ -10,6 +10,7 @@ import { handleDraftRoutes } from './drafts';
 import { handleTagRoutes, handleListTags } from './tags';
 import { handleFilterRoutes } from './filters';
 import { handleBlockSender, handleUnblockSender, handleListBlocked } from './blocklist';
+import { temporaryRouteAllowed } from '../lib/temporary';
 
 /** Route all API requests */
 export async function handleApi(
@@ -30,10 +31,17 @@ export async function handleApi(
   if (path === '/api/v1/mail/provision' && method === 'POST') {
     return handleProvision(request, env);
   }
+  if (path === '/api/v1/mail/temp' && method === 'POST') {
+    return handleTemporaryProvision(request, env);
+  }
 
   // Everything else requires auth
   const auth = await authenticate(request, env);
   if (!auth) return authError();
+
+  if (auth.mailboxType === 'temporary' && !temporaryRouteAllowed(path, method)) {
+    return forbidden('This operation is not available for temporary mailboxes');
+  }
 
   // --- Authenticated routes ---
 

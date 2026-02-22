@@ -10,11 +10,14 @@ CREATE TABLE IF NOT EXISTS mailboxes (
   domain TEXT NOT NULL DEFAULT 'lenscli.com',
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   settings TEXT DEFAULT '{}',             -- JSON: retention_days, poll_interval, etc.
-  status TEXT NOT NULL DEFAULT 'active'   -- active | suspended | deleted
+  status TEXT NOT NULL DEFAULT 'active',  -- active | suspended | deleted | expired
+  mailbox_type TEXT NOT NULL DEFAULT 'persistent', -- persistent | temporary
+  expires_at TEXT                         -- temporary mailbox expiry; NULL for persistent
 );
 
 CREATE INDEX IF NOT EXISTS idx_mailboxes_address ON mailboxes(address);
 CREATE INDEX IF NOT EXISTS idx_mailboxes_domain ON mailboxes(domain);
+CREATE INDEX IF NOT EXISTS idx_mailboxes_expiry ON mailboxes(expires_at) WHERE expires_at IS NOT NULL;
 
 -- API Keys: multiple per mailbox (rotation support)
 CREATE TABLE IF NOT EXISTS api_keys (
@@ -55,6 +58,7 @@ CREATE TABLE IF NOT EXISTS messages (
   dmarc_result TEXT DEFAULT 'unknown',    -- pass | fail | none | unknown
   security_flags TEXT DEFAULT '[]',       -- JSON array of SecurityFlag objects from security hooks
   size_bytes INTEGER DEFAULT 0,
+  storage_bytes INTEGER DEFAULT 0,         -- total R2 bytes: raw, parsed bodies, and attachments
   status TEXT NOT NULL DEFAULT 'active',  -- active | deletion_pending | deleted
   direction TEXT NOT NULL DEFAULT 'inbound'  -- inbound | outbound
 );

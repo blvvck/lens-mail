@@ -45,6 +45,8 @@ export interface AuthContext {
   mailboxId: string;
   address: string;
   keyId: string;
+  mailboxType: string;
+  expiresAt: string | null;
 }
 
 /** API response envelope */
@@ -79,6 +81,7 @@ export interface MessageMeta {
   dmarc_result: string;
   security_flags: string; // JSON array of SecurityFlag objects
   size_bytes: number;
+  storage_bytes: number;
   status: string;
   direction: string;
 }

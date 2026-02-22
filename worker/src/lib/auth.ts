@@ -1,4 +1,5 @@
 import type { Env, AuthContext } from '../types';
+import { isExpired } from './temporary';
 
 /** Hash an API key using SHA-256 */
 export async function hashKey(key: string): Promise<string> {
@@ -39,7 +40,7 @@ export async function authenticate(
     const tokenHash = await hashKey(token);
     const adminHash = await hashKey(env.ADMIN_KEY);
     if (tokenHash === adminHash) {
-      return { mailboxId: '__admin__', address: 'admin', keyId: '__admin__' };
+      return { mailboxId: '__admin__', address: 'admin', keyId: '__admin__', mailboxType: 'admin', expiresAt: null };
     }
     return null;
   }
@@ -49,15 +50,16 @@ export async function authenticate(
 
   const hash = await hashKey(token);
   const row = await env.DB.prepare(
-    `SELECT ak.id as key_id, ak.mailbox_id, m.address
+    `SELECT ak.id as key_id, ak.mailbox_id, m.address, m.mailbox_type, m.expires_at
      FROM api_keys ak
      JOIN mailboxes m ON m.id = ak.mailbox_id
-     WHERE ak.key_hash = ? AND ak.revoked_at IS NULL AND m.status = 'active'`
+     WHERE ak.key_hash = ? AND ak.revoked_at IS NULL AND m.status = 'active'
+       AND (m.expires_at IS NULL OR julianday(m.expires_at) > julianday('now'))`
   )
     .bind(hash)
-    .first<{ key_id: string; mailbox_id: string; address: string }>();
+    .first<{ key_id: string; mailbox_id: string; address: string; mailbox_type: string; expires_at: string | null }>();
 
-  if (!row) return null;
+  if (!row || isExpired(row.expires_at)) return null;
 
   // Update last_used_at (fire and forget)
   env.DB.prepare('UPDATE api_keys SET last_used_at = datetime(?) WHERE id = ?')
@@ -68,6 +70,8 @@ export async function authenticate(
     mailboxId: row.mailbox_id,
     address: row.address,
     keyId: row.key_id,
+    mailboxType: row.mailbox_type || 'persistent',
+    expiresAt: row.expires_at,
   };
 }
 
