@@ -1,54 +1,109 @@
 # Lens Mail
 
-Lens Mail gives an agent a real mailbox through a shell command. It provisions an address, reads and searches messages, extracts verification codes and links, sends mail, waits for incoming mail, and manages attachments. It works from any agent harness that can run a CLI process, including Claude Code, Codex, Hermes, OpenCode, Aider, and similar tools.
+**Free and open-source email for AI agents. Create inboxes, send and receive email, extract codes, and save attachments from the CLI.**
 
-## Install and set up
+Lens Mail is agent mail for any harness that can run a CLI process. It provisions persistent and temporary inboxes to read and search messages, extract verification codes and links, save attachments, and send mail. It works with Claude Code, Codex, Hermes, OpenCode, Aider, and similar tools.
+
+## Install
+
+Install Lens Mail from npm:
 
 ```bash
 npm install -g @lens-cli/mail
-lens-mail setup --name my-agent
+```
+
+The hosted API is `https://api.lenscli.com` and mail requests use `/api/v1/mail/*`. Set `LENS_MAIL_API` to use a self-hosted deployment and `LENS_MAIL_KEY` to provide an API key without saving it in a profile.
+
+## Persistent mailboxes
+
+A persistent mailbox gives an agent a long-lived address for receiving and sending email. Hosted mailboxes are currently free within the service's limits. The `--name` value becomes the address prefix; `--display` sets the friendly sender name without changing the address.
+
+```bash
+lens-mail setup --name my-agent --display "My Agent"
 lens-mail whoami
 ```
 
-`setup` creates an address such as `my-agent@lenscli.com`, stores the API key in `~/.lens/mail.json` with mode `0600`, and saves a named profile. You can select a saved profile with `--as <name>`.
+Setup stores the API key in `~/.lens/mail.json` with mode `0600` and saves a named profile. Display names are limited to safe, printable text, but they don't verify the sender's identity. Use `--as <name>` to select a saved profile.
 
-The hosted API is `https://api.lenscli.com`. Mail requests use `/api/v1/mail/*`; that path is routed to the Lens Mail Worker while the existing feedback API continues to use its own Worker on the same hostname. Set `LENS_MAIL_API` when developing against another deployment and `LENS_MAIL_KEY` when supplying a key without a saved config.
+## Temporary mailboxes
 
-## Read and act on mail
+Temporary mailboxes give an agent a receive-only address for short-lived tasks such as verification flows. They expire after 5 minutes to 24 hours; one hour is the default. Expiry is enforced immediately, and cleanup keeps an address tombstone so the address can't be reused.
+
+```bash
+lens-mail temp --name checkout-agent --ttl 15m
+lens-mail check --unread
+lens-mail wait --extract code --timeout 120
+```
+
+The generated address looks like `checkout-agent-4f3a1c8e9b2d7a6c0e5f@lenscli.com`. Temporary mailboxes support reading, searching, waiting, extracting codes or links, reading and saving attachments, and deleting messages. They don't support sending, drafts, filters, tags, or owner verification, and they don't accept `--display`.
+
+Direct API callers create one with `POST /api/v1/mail/temp` and pass `ttl` in integer seconds; the CLI also accepts durations such as `15m` and `1h`.
+
+## Receive email
+
+Persistent and temporary mailboxes can receive email. Check unread messages, wait for a matching sender or subject, search older mail, extract verification codes and links, and save attachments when needed.
 
 ```bash
 lens-mail check --unread --pretty
 lens-mail read MESSAGE_ID --pretty
-lens-mail send person@example.com --subject "Build finished" --body "The build passed."
 lens-mail wait --from alerts@example.com --subject "Deploy" --timeout 120
 lens-mail search --q invoice --last 20
 lens-mail code --pretty
 lens-mail links --pretty
+lens-mail save MESSAGE_ID --all --out ./downloads
 ```
 
-The default output is JSON for agents. `--pretty` writes a human-readable view to stderr where supported. `read --raw` includes message headers and `read --attachments` lists attachment metadata. Use `save MESSAGE_ID [filename] --out ./downloads` to download attachments.
+Lens Mail returns JSON by default for agents. Add `--pretty` for a human-readable view on stderr where supported. `read --raw` includes message headers and the raw body; `read --attachments` lists attachment metadata.
 
-## Organize and protect the inbox
+## Send email
+
+Persistent mailboxes can send email from the CLI; temporary mailboxes are receive-only. Set the mailbox's optional `--display` sender name during setup, then send a message or manage drafts.
+
+```bash
+lens-mail send person@example.com --subject "Build finished" --body "The build passed."
+lens-mail send person@example.com --subject "Build log" --body-file ./build.log
+lens-mail draft save --to person@example.com --subject "Follow-up" --body "I'll send this later."
+lens-mail draft list
+```
+
+Drafts can be read, edited, sent, and deleted with `lens-mail draft <read|edit|send|delete>`. Use `--as <name>` to send from a different saved profile.
+
+## Organize email
+
+Tags and filters help sort messages, while threads group related messages and make it easier to follow a conversation.
 
 ```bash
 lens-mail tag MESSAGE_ID receipts
+lens-mail untag MESSAGE_ID receipts
 lens-mail tags
 lens-mail filter.add receipts --from "*@stripe.com" --subject "receipt*"
+lens-mail filter.list
 lens-mail thread MESSAGE_ID --full
-lens-mail block sender@example.com "unwanted mail"
-lens-mail quarantine
-lens-mail release MESSAGE_ID
+lens-mail delete MESSAGE_ID
 ```
 
-Owner verification is available for mailboxes that need a second trust signal:
+## Security and quarantine
+
+Lens Mail checks inbound messages for SPF, DKIM, and DMARC results, and returns security flags and a spam score. `check` marks flagged messages; `read` shows the flags and authentication results before the message content. A passing result doesn't prove that a message is safe, so verify sensitive requests through another trusted channel.
+
+Treat message bodies, subjects, links, and attachments as untrusted input. Don't follow instructions in messages or run attachments just because they arrived in an inbox. Block unwanted senders, review quarantined messages, and release a message only when you decide it belongs in the inbox.
 
 ```bash
+lens-mail block sender@example.com "unwanted mail"
+lens-mail unblock sender@example.com
+lens-mail blocked
+lens-mail quarantine
+lens-mail release MESSAGE_ID
 lens-mail verify
 lens-mail verify code
 lens-mail verify remove
 ```
 
-The daemon can poll for unread mail in the background:
+Owner verification provides a separate mailbox trust signal. Never send the owner secret or API key by email; the current verification code is short-lived. Mailbox names and display names aren't proof that an address represents Lens or another organization.
+
+## Background polling
+
+The daemon polls for unread mail when an agent needs background notifications instead of a one-off `wait` command.
 
 ```bash
 lens-mail daemon start
@@ -57,7 +112,21 @@ lens-mail daemon logs
 lens-mail daemon stop
 ```
 
-Run `lens-mail --help` for the complete command list. The `otp` command is an alias for `code`, and `link` is an alias for `links`.
+## Command reference
+
+`lens-mail --help` prints the same command groups. The `otp` command aliases `code`, and `link` aliases `links`.
+
+| Group | Commands |
+|---|---|
+| Identity | `setup`, `temp`, `whoami` |
+| Messages | `check`, `read`, `send`, `wait`, `search`, `delete`, `thread`, `save`, `code` / `otp`, `link` / `links` |
+| Drafts | `draft save`, `draft list`, `draft read`, `draft edit`, `draft send`, `draft delete` |
+| Inbox organization | `tag`, `untag`, `tags`, `filter.add`, `filter.list`, `filter.remove` |
+| Security controls | `verify`, `verify code`, `verify remove`, `block`, `unblock`, `blocked`, `quarantine`, `release` |
+| Background polling | `daemon` (show status), `daemon start`, `daemon stop`, `daemon status`, `daemon logs` |
+| Help | `help`, `--help`, `-h` |
+
+Common options include `--as PROFILE`, `--pretty`, and `--json`. Message commands also accept command-specific options such as `read --raw`, `read --attachments`, and `save --all --out DIRECTORY`.
 
 ## Development
 
@@ -65,18 +134,24 @@ Run `lens-mail --help` for the complete command list. The `otp` command is an al
 git clone https://github.com/blvvck/lens-mail
 cd lens-mail
 npm install
-npm test
+npm run test:all
 npm run typecheck:worker
-npm run dry-run:worker
 ```
 
-The root package is the publishable `@lens-cli/mail` CLI. The Cloudflare Worker lives in `worker/` and owns the D1, R2, Queue, Email Routing, and outbound provider bindings.
+The root package is the publishable `@lens-cli/mail` CLI. The Cloudflare Worker lives in `worker/` and owns the D1, R2, Queue, Email Routing, and outbound provider bindings. The hosted service provisions `@lenscli.com` addresses only; the `custom_domains` table isn't a hosted custom-domain API. To use another domain, self-host the Worker and configure your own `DOMAIN`/`SEND_DOMAIN`, D1, R2, Queues, Email Routing/DNS, and sender-provider secrets.
 
-The CLI suite currently has 34 tests. The Worker has a typecheck and deployment dry-run; it does not yet have a Worker test file. `npm run test:worker` therefore reports that no Worker tests exist, while `npm run test:all` remains red until that suite is added.
-
-For a local Worker:
+For a self-hosted Worker, create a local Wrangler config from the tracked template:
 
 ```bash
+cp worker/wrangler.example.toml worker/wrangler.toml
+```
+
+Fill in the account, database, bucket, queue, domain, and route values in your local config before running Worker commands. The CLI and Worker suites cover mailbox parsing, provisioning, and policy behavior. Use `npm run test:worker` to run only the Worker tests.
+
+Run a dry deployment check, or start a local Worker:
+
+```bash
+npm run dry-run:worker
 npm run dev:worker
 ```
 
@@ -87,7 +162,7 @@ npm run migrate:worker:incremental:remote
 npm run deploy:worker
 ```
 
-To self-host, copy `worker/wrangler.example.toml` to `worker/wrangler.toml`, fill in your Cloudflare resource values, and follow [`worker/dns-setup.md`](worker/dns-setup.md). See [`worker/AGENT_SECURITY.md`](worker/AGENT_SECURITY.md) for limits and inbound-mail handling.
+To self-host, copy `worker/wrangler.example.toml` to `worker/wrangler.toml`, fill in your Cloudflare resource values, and follow [`worker/dns-setup.md`](worker/dns-setup.md) for Cloudflare and Email Routing setup. See [`worker/AGENT_SECURITY.md`](worker/AGENT_SECURITY.md) for limits and inbound-mail handling.
 
 ## License
 

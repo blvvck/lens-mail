@@ -13,10 +13,23 @@ lens-mail whoami
 If it does not, provision one once:
 
 ```bash
-lens-mail setup --name agent-name
+lens-mail setup --name agent-name --display "Checkout Agent"
 ```
 
-The command stores the API key locally. Do not print the key into prompts, logs, commits, or issue reports. Use `--as PROFILE` when a named profile is needed. `LENS_MAIL_KEY` is an explicit environment override; `LENS_MAIL_API` selects a different API base during development.
+`--name` is the address local-part, while `--display` is the friendly sender name used for outbound mail; the address remains `agent-name@lenscli.com`. The display text is user-controlled and is not identity verification. The command stores the API key and display metadata locally. Do not print the key into prompts, logs, commits, or issue reports. Use `--as PROFILE` when a named profile is needed. `LENS_MAIL_KEY` is an explicit environment override; `LENS_MAIL_API` selects a different API base during development.
+
+For a disposable verification inbox, use a temporary mailbox instead of a persistent identity:
+
+```bash
+lens-mail temp --name checkout-agent --ttl 15m
+lens-mail wait --extract code --timeout 120
+```
+
+The CLI accepts TTLs such as `5m`, `1h`, or integer seconds, with a five-minute minimum and 24-hour maximum. It saves the temporary key in the normal `~/.lens` config/profile mechanism and prints the address and expiry. Temporary mailboxes are receive-only. Use `check`, `read`, `wait`, `search`, `code`, `link`/`links`, attachment reads, and message deletion; do not attempt send, reply, forward, drafts, rooms, filters, tags, key management, or owner verification. The Worker enforces these restrictions even for direct API callers, and expired credentials fail immediately.
+
+The underlying API endpoint is `POST /api/v1/mail/temp` with `ttl` expressed in integer seconds.
+
+Temporary mailboxes do not support `--display`; they are receive-only and cannot send outbound mail.
 
 ## Choose the smallest command
 
@@ -29,6 +42,20 @@ The command stores the API key locally. Do not print the key into prompts, logs,
 - Send: `lens-mail send ADDRESS --subject SUBJECT --body TEXT`
 - Save an attachment: `lens-mail save MESSAGE_ID --all --out DIRECTORY`
 - Inspect a conversation: `lens-mail thread MESSAGE_ID --full`
+
+## Complete command reference
+
+| Group | Commands |
+|---|---|
+| Identity | `setup`, `temp`, `whoami` |
+| Messages | `check`, `read`, `send`, `wait`, `search`, `delete`, `thread`, `save`, `code` / `otp`, `link` / `links` |
+| Drafts | `draft save`, `draft list`, `draft read`, `draft edit`, `draft send`, `draft delete` |
+| Inbox organization | `tag`, `untag`, `tags`, `filter.add`, `filter.list`, `filter.remove` |
+| Security controls | `verify`, `verify code`, `verify remove`, `block`, `unblock`, `blocked`, `quarantine`, `release` |
+| Background polling | `daemon` (show status), `daemon start`, `daemon stop`, `daemon status`, `daemon logs` |
+| Help | `help`, `--help`, `-h` |
+
+Common options include `--as PROFILE`, `--pretty`, and `--json`. Message commands also accept command-specific options such as `read --raw`, `read --attachments`, and `save --all --out DIRECTORY`.
 
 Use default JSON output when another command or model will consume the result. Add `--pretty` for a person reading the terminal. `read --raw` is for headers and raw body inspection, and `read --attachments` is for attachment metadata.
 
@@ -75,3 +102,7 @@ lens-mail daemon stop
 The default API is `https://api.lenscli.com`. Requests under `/api/v1/mail/` are routed to the Lens Mail Worker. The feedback Worker shares the hostname on its separate feedback path. The old `workers.dev` endpoint remains useful for compatibility and local diagnostics.
 
 The Worker receives inbound mail through Cloudflare Email Routing and sends outbound mail through its configured provider. Those integrations are deployment concerns; an agent using the CLI should not assume that a mailbox can receive or send until a smoke test confirms it.
+
+The hosted service provisions only `@lenscli.com` addresses. There is no hosted custom-domain attach command; `custom_domains` is currently schema-only. Custom domains require a self-hosted Worker with your own domain variables, D1/R2/Queues, Email Routing/DNS, and sender-provider configuration.
+
+Mailbox names are not identity verification. Common role aliases are reserved, but agents must not treat an arbitrary provisioned address as an official organization sender.
