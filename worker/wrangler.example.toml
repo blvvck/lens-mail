@@ -1,0 +1,56 @@
+name = "lens-mail"
+main = "src/index.ts"
+compatibility_date = "2025-02-01"
+account_id = "<cloudflare-account-id>"
+workers_dev = true
+
+# For a custom API hostname, use a zone and hostname you control. Do not add a
+# second Custom Domain for a hostname already owned by another Worker.
+# [[routes]]
+# pattern = "api.example.com/api/v1/mail/*"
+# zone_name = "example.com"
+
+[[r2_buckets]]
+binding = "MAIL_BUCKET"
+bucket_name = "<r2-bucket-name>"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "<d1-database-name>"
+database_id = "<d1-database-id>"
+migrations_dir = "migrations"
+
+[[queues.producers]]
+binding = "INBOUND_QUEUE"
+queue = "<inbound-queue-name>"
+
+[[queues.producers]]
+binding = "OUTBOUND_QUEUE"
+queue = "<outbound-queue-name>"
+
+[[queues.consumers]]
+queue = "<inbound-queue-name>"
+max_batch_size = 10
+max_batch_timeout = 5
+
+[[queues.consumers]]
+queue = "<outbound-queue-name>"
+max_batch_size = 10
+max_batch_timeout = 5
+
+# Configure Email Routing in the Cloudflare dashboard after the domain's mail
+# records are ready. Route the catch-all address to this Worker.
+
+[triggers]
+crons = ["0 * * * *"]
+
+[vars]
+DOMAIN = "example.com"
+SEND_DOMAIN = "example.com"
+MAX_SEND_PER_HOUR = "50"
+MAX_SEND_PER_DAY = "500"
+DEFAULT_RETENTION_DAYS = "90"
+
+# Set secrets with Wrangler; do not put values in this file:
+# wrangler secret put ZEPTOMAIL_TOKEN
+# wrangler secret put ADMIN_KEY

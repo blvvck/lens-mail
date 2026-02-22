@@ -1,0 +1,41 @@
+{
+  "name": "@lens-cli/mail",
+  "version": "0.1.0",
+  "description": "Your agent's mailbox: check, read, send, wait, and extract verification codes.",
+  "license": "MIT",
+  "author": "Isaac Ejeh",
+  "bin": {
+    "lens-mail": "src/cli.cjs"
+  },
+  "main": "src/index.cjs",
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "workspaces": [
+    "worker"
+  ],
+  "scripts": {
+    "test": "vitest run test",
+    "test:worker": "npm test --workspace=lens-mail-worker",
+    "test:all": "npm test && npm run test:worker",
+    "dev:worker": "wrangler dev --config worker/wrangler.toml",
+    "deploy:worker": "wrangler deploy --config worker/wrangler.toml",
+    "dry-run:worker": "wrangler deploy --dry-run --config worker/wrangler.toml",
+    "migrate:worker": "npm run migrate --workspace=lens-mail-worker",
+    "migrate:worker:remote": "npm run migrate:remote --workspace=lens-mail-worker",
+    "migrate:worker:incremental": "npm run migrate:incremental --workspace=lens-mail-worker",
+    "migrate:worker:incremental:remote": "npm run migrate:incremental:remote --workspace=lens-mail-worker",
+    "typecheck:worker": "npm run typecheck --workspace=lens-mail-worker"
+  },
+  "devDependencies": {
+    "vitest": "^3.0.0"
+  }
+}

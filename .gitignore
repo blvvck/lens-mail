@@ -1,0 +1,9 @@
+node_modules
+.wrangler
+dist
+.dev.vars
+.stfolder
+worker/wrangler.toml
+worker/dns-setup.local.md
+/CLAUDE.md
+/.claude/
