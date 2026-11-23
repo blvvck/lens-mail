@@ -1,9 +1,17 @@
 {
   "name": "@lens-cli/mail",
-  "version": "0.1.0",
-  "description": "Your agent's mailbox: check, read, send, wait, and extract verification codes.",
+  "version": "0.2.0",
+  "description": "Free and open-source email for AI agents. Create inboxes, send and receive email, extract codes, and save attachments from the CLI.",
   "license": "MIT",
   "author": "Isaac Ejeh",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/blvvck/lens-mail.git"
+  },
+  "homepage": "https://github.com/blvvck/lens-mail#readme",
+  "bugs": {
+    "url": "https://github.com/blvvck/lens-mail/issues"
+  },
   "bin": {
     "lens-mail": "src/cli.cjs"
   },
