@@ -1,7 +1,24 @@
 {
   "name": "@lens-cli/mail",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Free and open-source email for AI agents. Create inboxes, send and receive email, extract codes, and save attachments from the CLI.",
+  "keywords": [
+    "agent mail",
+    "email for ai agents",
+    "ai agents",
+    "agent email",
+    "email",
+    "email cli",
+    "mail cli",
+    "email inbox",
+    "temporary email",
+    "disposable email",
+    "verification codes",
+    "email attachments",
+    "open source",
+    "free email",
+    "cloudflare workers"
+  ],
   "license": "MIT",
   "author": "Isaac Ejeh",
   "repository": {

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.1 — 2026-11-23
+
+- Add npm keywords for agent email and CLI discovery.
+
 ## 0.2.0 — 2026-11-23
 
 - Add temporary receive-only mailboxes with configurable expiration and automatic cleanup.
