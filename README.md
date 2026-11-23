@@ -162,7 +162,7 @@ npm run migrate:worker:incremental:remote
 npm run deploy:worker
 ```
 
-To self-host, copy `worker/wrangler.example.toml` to `worker/wrangler.toml`, fill in your Cloudflare resource values, and follow [`worker/dns-setup.md`](worker/dns-setup.md) for Cloudflare and Email Routing setup. See [`worker/AGENT_SECURITY.md`](worker/AGENT_SECURITY.md) for limits and inbound-mail handling.
+To self-host, copy `worker/wrangler.example.toml` to `worker/wrangler.toml`, fill in your Cloudflare resource values, and follow [the Cloudflare and Email Routing setup guide](https://github.com/blvvck/lens-mail/blob/main/worker/dns-setup.md). See [the security guide](https://github.com/blvvck/lens-mail/blob/main/worker/AGENT_SECURITY.md) for service limits and inbound-mail handling.
 
 ## License
 
